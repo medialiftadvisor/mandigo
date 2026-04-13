@@ -1,32 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios'; // API call ke liye
 import './index.css';
 
-// --- MOCK DATA (Testing ke liye premium images ke sath) ---
-const mockCategories = [
+// Premium Categories (Icons fix kar diye gaye hain)
+const categoriesList = [
   { id: 1, name: 'Vegetables & Fruits', img: 'https://cdn-icons-png.flaticon.com/512/3194/3194591.png', bg: '#e8f5e9' },
-  { id: 2, name: 'Atta, Rice & Dal', img: 'https://cdn-icons-png.flaticon.com/512/6888/6888125.png', bg: '#f1f8e9' },
+  { id: 2, name: 'Atta, Rice & Dal', img: 'https://cdn-icons-png.flaticon.com/512/3082/3082011.png', bg: '#f1f8e9' }, // Sahi icon
   { id: 3, name: 'Oil, Ghee & Masala', img: 'https://cdn-icons-png.flaticon.com/512/3348/3348084.png', bg: '#fff8e1' },
   { id: 4, name: 'Dairy & Eggs', img: 'https://cdn-icons-png.flaticon.com/512/3050/3050114.png', bg: '#e3f2fd' },
 ];
 
-const mockProducts = [
-  { id: 101, category: 'Vegetables & Fruits', name: 'Fresh Organic Tomatoes (500g)', price: 40, img: 'https://p.kindpng.com/picc/s/181-1810141_fresh-tomato-png-tomato-png-transparent-png.png' },
-  { id: 102, category: 'Vegetables & Fruits', name: 'Potatoes - Hybrid (1kg)', price: 25, img: 'https://p.kindpng.com/picc/s/130-1309852_potato-hd-png-raw-potatoes-png-transparent-png.png' },
-  { id: 103, category: 'Atta, Rice & Dal', name: 'Aashirvaad Atta (5kg)', price: 210, img: 'https://www.westsidemarket.com/media/catalog/product/placeholder/default/aashirvaad-atta.png' },
-  { id: 104, category: 'Dairy & Eggs', name: 'Amul Taza Milk (1L)', price: 60, img: 'https://cdn.grofers.com/app/images/products/full_screen/pro_3297.jpg' },
-  { id: 105, category: 'Dairy & Eggs', name: 'Fresh Farm Eggs (12 pack)', price: 96, img: 'https://p.kindpng.com/picc/s/131-1317544_egg-transparent-png-farm-fresh-eggs-transparent-png.png' },
-];
-
-// --- APP COMPONENT ---
 function App() {
-  const [activeCat, setActiveCat] = useState('Vegetables & Fruits');
+  const [activeCat, setActiveCat] = useState('All'); // Default sab dikhega
   const [searchQuery, setSearchQuery] = useState('');
   const [cartCount, setCartCount] = useState(0);
+  
+  // Real Database Data state
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Filter Products based on Category & Search
-  const filteredProducts = mockProducts.filter(p => 
-    p.category === activeCat && 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  // --- AAPKA HOSTINGER API CONNECTION ---
+  useEffect(() => {
+    const fetchRealData = async () => {
+      setLoading(true);
+      try {
+        // Aapka asli PHP URL (Category filter ke sath)
+        const response = await axios.get(`https://mall.zaminzaydaat.com/get_products.php?category=${activeCat === 'All' ? '' : activeCat}`);
+        setProducts(response.data);
+      } catch (error) {
+        console.error("API Error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRealData();
+  }, [activeCat]); // Jab bhi category change hogi, naya data aayega
+
+  // Search Filter
+  const filteredProducts = products.filter(p => 
+    p.name && p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -58,7 +70,16 @@ function App() {
       <div className="category-section">
         <h3 className="section-title">Grocery & Kitchen</h3>
         <div className="cat-scroll-container">
-          {mockCategories.map((c) => (
+          {/* ALL button */}
+          <div className={`cat-box ${activeCat === 'All' ? 'active' : ''}`} onClick={() => setActiveCat('All')}>
+            <div className="cat-img-wrapper" style={{ background: '#f3f4f6' }}>
+              <img src="https://cdn-icons-png.flaticon.com/512/3081/3081840.png" alt="All" />
+            </div>
+            <span>All Items</span>
+          </div>
+
+          {/* Baki Categories */}
+          {categoriesList.map((c) => (
             <div 
               key={c.id} 
               className={`cat-box ${activeCat === c.name ? 'active' : ''}`}
@@ -77,25 +98,32 @@ function App() {
 
       {/* 3. PRODUCT GRID */}
       <div className="section-title">
-        {searchQuery ? `Search: "${searchQuery}"` : activeCat}
+        {searchQuery ? `Search: "${searchQuery}"` : `Showing: ${activeCat}`}
       </div>
       
       <div className="product-grid">
-        {filteredProducts.length > 0 ? (
-          filteredProducts.map(p => (
-            <div key={p.id} className="product-card">
-              <img src={p.img} alt={p.name} onError={(e) => e.target.src='https://via.placeholder.com/150'} />
-              <h4>{p.name}</h4>
-              <div className="price-row">
-                <span className="price">₹{p.price}</span>
-                <button className="add-btn" onClick={() => setCartCount(c => c+1)}>ADD</button>
+        {loading ? (
+          <p style={{ gridColumn: 'span 2', textAlign: 'center', padding: '20px', color: '#999', fontWeight: 'bold' }}>Loading Real Data...</p>
+        ) : filteredProducts.length > 0 ? (
+          filteredProducts.map(p => {
+            // Asli image URL nikalna (agar ek se zyada hain)
+            const mainImage = p.image_url ? p.image_url.split(',')[0].trim() : 'https://cdn-icons-png.flaticon.com/512/878/878052.png';
+
+            return (
+              <div key={p.id} className="product-card">
+                <img src={mainImage} alt={p.name} onError={(e) => e.target.src='https://cdn-icons-png.flaticon.com/512/878/878052.png'} />
+                <h4>{p.name}</h4>
+                <div className="price-row">
+                  <span className="price">₹{p.price}</span>
+                  <button className="add-btn" onClick={() => setCartCount(c => c+1)}>ADD</button>
+                </div>
               </div>
-            </div>
-          ))
+            )
+          })
         ) : (
           <div style={{ textAlign: 'center', gridColumn: 'span 2', padding: '40px 0', color: '#9ca3af' }}>
-            <i className="fas fa-search" style={{ fontSize: '30px', marginBottom: '10px' }}></i>
-            <p>No products found in {activeCat}.</p>
+            <i className="fas fa-box-open" style={{ fontSize: '30px', marginBottom: '10px' }}></i>
+            <p>No products found.</p>
           </div>
         )}
       </div>
