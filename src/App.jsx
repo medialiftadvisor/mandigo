@@ -106,9 +106,9 @@ function App() {
           <p style={{ gridColumn: 'span 2', textAlign: 'center', padding: '20px', color: '#999', fontWeight: 'bold' }}>Loading Real Data...</p>
         ) : filteredProducts.length > 0 ? (
           filteredProducts.map(p => {
-            // Asli image URL nikalna (agar ek se zyada hain)
-            const mainImage = p.image_url ? p.image_url.split(',')[0].trim() : 'https://cdn-icons-png.flaticon.com/512/878/878052.png';
-
+            // Ye code check karega ki database mein image, photo, ya image_url jo bhi ho, use utha le
+const imgPath = p.image_url || p.image || p.photo || '';
+const mainImage = imgPath ? imgPath.split(',')[0].trim() : 'https://cdn-icons-png.flaticon.com/512/878/878052.png';
             return (
               <div key={p.id} className="product-card">
                 <img src={mainImage} alt={p.name} onError={(e) => e.target.src='https://cdn-icons-png.flaticon.com/512/878/878052.png'} />
