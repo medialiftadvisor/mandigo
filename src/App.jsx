@@ -10,35 +10,156 @@ const categoriesList = [
 ];
 
 function App() {
-  // Navigation State (Current Page kaunsa hai)
-  const [currentTab, setCurrentTab] = useState('Home'); 
-  
-  // Home Page States
+  const [currentTab, setCurrentTab] = useState('Home');
   const [activeCat, setActiveCat] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  // REAL CART STATE (Sirf number nahi, ab items save honge)
   const [cart, setCart] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [wallet, setWallet] = useState(null);
+  const [user, setUser] = useState({ name: 'Guest', email: 'guest@sevzo.app', _id: null });
+  const [backendMessage, setBackendMessage] = useState('Connecting to Sevzo backend...');
+  const [adminData, setAdminData] = useState({ users: [], orders: [], inventory: [], wallets: [], partners: [], admins: [] });
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminView, setAdminView] = useState('summary');
+  const [adminMessage, setAdminMessage] = useState('Admin panel is ready.');
 
-  // API Call (Hostinger)
+  const API_BASE = import.meta.env.VITE_API_URL || 'https://sevzo-backend.vercel.app';
+  const useBackend = true;
+
+  const normalizeProduct = (item) => ({
+    id: item._id || item.id || item.sku || item.productName || `${item.name}-${Math.random()}`,
+    name: item.productName || item.name || item.title || 'Unnamed Item',
+    price: item.price || item.cost || 0,
+    image_url: item.image || item.image_url || item.photo || item.photo_url || '',
+  });
+
+  const fetchAdminData = async () => {
+    if (!useBackend) return;
+
+    setAdminLoading(true);
+    try {
+      const [usersResponse, ordersResponse, inventoryResponse, walletsResponse, partnersResponse, adminsResponse] = await Promise.all([
+        axios.get(`${API_BASE}/api/users`),
+        axios.get(`${API_BASE}/api/orders`),
+        axios.get(`${API_BASE}/api/inventory`),
+        axios.get(`${API_BASE}/api/wallets`),
+        axios.get(`${API_BASE}/api/delivery-partners`),
+        axios.get(`${API_BASE}/api/admins`)
+      ]);
+
+      setAdminData({
+        users: Array.isArray(usersResponse.data) ? usersResponse.data : [],
+        orders: Array.isArray(ordersResponse.data) ? ordersResponse.data : [],
+        inventory: Array.isArray(inventoryResponse.data) ? inventoryResponse.data : [],
+        wallets: Array.isArray(walletsResponse.data) ? walletsResponse.data : [],
+        partners: Array.isArray(partnersResponse.data) ? partnersResponse.data : [],
+        admins: Array.isArray(adminsResponse.data) ? adminsResponse.data : []
+      });
+      setAdminMessage('Admin data loaded successfully.');
+    } catch (error) {
+      console.error('Admin panel error:', error);
+      setAdminMessage('Unable to load admin data. Check backend deployment.');
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchRealData = async () => {
+    const fetchInventory = async () => {
       setLoading(true);
       try {
-        const response = await axios.get(`https://mall.zaminzaydaat.com/get_products.php?category=${activeCat === 'All' ? '' : activeCat}`);
-        setProducts(response.data);
+        const endpoint = `${API_BASE}/api/inventory?category=${activeCat === 'All' ? '' : encodeURIComponent(activeCat)}`;
+        const response = await axios.get(endpoint);
+        const data = Array.isArray(response.data) ? response.data : [];
+        setProducts(data.map(normalizeProduct));
+        setBackendMessage('Connected to backend inventory successfully.');
       } catch (error) {
-        console.error("API Error:", error);
+        console.error('API Error:', error);
+        setBackendMessage('Backend inventory request failed. Check backend deployment.');
       } finally {
         setLoading(false);
       }
     };
-    fetchRealData();
-  }, [activeCat]);
 
-  // Cart me item add karna
+    fetchInventory();
+  }, [activeCat, API_BASE]);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const usersResponse = await axios.get(`${API_BASE}/api/users?email=customer@sevzo.app&limit=1`);
+        const foundUser = Array.isArray(usersResponse.data) && usersResponse.data.length > 0
+          ? usersResponse.data[0]
+          : null;
+        if (foundUser) {
+          setUser(foundUser);
+          setBackendMessage('Connected to backend user data successfully.');
+        }
+      } catch (error) {
+        console.error('User fetch error:', error);
+      }
+    };
+
+    fetchUserData();
+  }, [API_BASE]);
+
+  useEffect(() => {
+    const fetchBackendDetails = async () => {
+      if (!user?._id) return;
+
+      try {
+        const [walletResponse, ordersResponse] = await Promise.all([
+          axios.get(`${API_BASE}/api/wallets?ownerType=User&ownerId=${user._id}`),
+          axios.get(`${API_BASE}/api/orders?userId=${user._id}`)
+        ]);
+
+        if (Array.isArray(walletResponse.data) && walletResponse.data.length > 0) {
+          setWallet(walletResponse.data[0]);
+        }
+        if (Array.isArray(ordersResponse.data)) {
+          setOrders(ordersResponse.data);
+        }
+      } catch (error) {
+        console.error('Backend details error:', error);
+      }
+    };
+
+    fetchBackendDetails();
+  }, [API_BASE, user]);
+
+  useEffect(() => {
+    if (currentTab === 'Admin') {
+      fetchAdminData();
+    }
+  }, [currentTab, API_BASE]);
+
+  const handleDeleteItem = async (resource, id) => {
+    if (!useBackend) return;
+
+    const endpointMap = {
+      users: 'users',
+      orders: 'orders',
+      inventory: 'inventory',
+      wallets: 'wallets',
+      partners: 'delivery-partners',
+      admins: 'admins'
+    };
+
+    const path = endpointMap[resource];
+    if (!path) return;
+
+    try {
+      await axios.delete(`${API_BASE}/api/${path}/${id}`);
+      setAdminMessage(`${resource.charAt(0).toUpperCase() + resource.slice(1)} deleted successfully.`);
+      fetchAdminData();
+    } catch (error) {
+      console.error('Delete error:', error);
+      setAdminMessage(`Unable to delete ${resource}.`);
+    }
+  };
+
   const addToCart = (product) => {
     const existingItem = cart.find(item => item.id === product.id);
     if (existingItem) {
@@ -48,26 +169,21 @@ function App() {
     }
   };
 
-  // Cart ka total bill aur total items
   const cartTotalAmount = cart.reduce((total, item) => total + (item.price * item.qty), 0);
   const cartTotalItems = cart.reduce((total, item) => total + item.qty, 0);
 
-  // --- PAGES (Views) ---
-
-  // 1. HOME PAGE
   const renderHome = () => {
-    const filteredProducts = products.filter(p => p.name && p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    const filteredProducts = products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
     return (
       <>
-        {/* Sticky Header */}
         <div className="top-header">
           <div className="header-row">
             <div className="location">
               <h2>Delivery in 10 mins</h2>
-              <p>Jaipur, Rajasthan <i className="fas fa-caret-down"></i></p>
+              <p>Jaipur, Rajasthan</p>
             </div>
-            <div className="wallet-badge"><i className="fas fa-wallet"></i> ₹ 50.00</div>
+            <div className="wallet-badge"><i className="fas fa-wallet"></i> ₹{wallet?.balance ?? 50}.00</div>
           </div>
           <div className="search-box">
             <i className="fas fa-search"></i>
@@ -75,18 +191,17 @@ function App() {
           </div>
         </div>
 
-        {/* Categories */}
         <div className="category-section">
           <h3 className="section-title">Grocery & Kitchen</h3>
           <div className="cat-scroll-container">
-            <div className={`cat-box ${activeCat === 'All' ? 'active' : ''}`} onClick={() => setActiveCat('All')}>
+            <div className={`cat-box ${activeCat === 'All' ? 'active' : ''}`} onClick={() => { setActiveCat('All'); setSearchQuery(''); }}>
               <div className="cat-img-wrapper" style={{ background: '#f3f4f6' }}>
                 <img src="https://cdn-icons-png.flaticon.com/512/3081/3081840.png" alt="All" />
               </div>
               <span>All Items</span>
             </div>
             {categoriesList.map((c) => (
-              <div key={c.id} className={`cat-box ${activeCat === c.name ? 'active' : ''}`} onClick={() => {setActiveCat(c.name); setSearchQuery('');}}>
+              <div key={c.id} className={`cat-box ${activeCat === c.name ? 'active' : ''}`} onClick={() => { setActiveCat(c.name); setSearchQuery(''); }}>
                 <div className="cat-img-wrapper" style={{ background: c.bg }}><img src={c.img} alt={c.name} /></div>
                 <span>{c.name}</span>
               </div>
@@ -96,37 +211,35 @@ function App() {
 
         <hr style={{ border: 0, borderTop: '6px solid #f3f4f6', margin: '5px 0 15px 0' }} />
 
-        {/* Product Grid */}
         <div className="section-title">{searchQuery ? `Search: "${searchQuery}"` : `Showing: ${activeCat}`}</div>
         <div className="product-grid">
           {loading ? (
             <p style={{ gridColumn: 'span 2', textAlign: 'center', padding: '20px', color: '#999', fontWeight: 'bold' }}>Loading Data...</p>
           ) : filteredProducts.length > 0 ? (
             filteredProducts.map(p => {
-              const imgPath = p.image_url || p.image || p.photo || '';
-              let mainImage = imgPath ? imgPath.split(',')[0].trim() : 'https://cdn-icons-png.flaticon.com/512/878/878052.png';
-              if (mainImage && !mainImage.startsWith('http')) { mainImage = `https://mall.zaminzaydaat.com/${mainImage}`; }
-
+              const mainImage = p.image_url || 'https://cdn-icons-png.flaticon.com/512/878/878052.png';
               return (
                 <div key={p.id} className="product-card">
-                  <img src={mainImage} alt={p.name} onError={(e) => e.target.src='https://cdn-icons-png.flaticon.com/512/878/878052.png'} />
+                  <img src={mainImage} alt={p.name} onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/878/878052.png'; }} />
                   <h4>{p.name}</h4>
                   <div className="price-row">
                     <span className="price">₹{p.price}</span>
                     <button className="add-btn" onClick={() => addToCart(p)}>ADD</button>
                   </div>
                 </div>
-              )
+              );
             })
           ) : (
-            <div style={{ textAlign: 'center', gridColumn: 'span 2', padding: '40px 0', color: '#9ca3af' }}><i className="fas fa-box-open" style={{ fontSize: '30px', marginBottom: '10px' }}></i><p>No products found.</p></div>
+            <div style={{ textAlign: 'center', gridColumn: 'span 2', padding: '40px 0', color: '#9ca3af' }}>
+              <i className="fas fa-box-open" style={{ fontSize: '30px', marginBottom: '10px' }}></i>
+              <p>No products found.</p>
+            </div>
           )}
         </div>
       </>
     );
   };
 
-  // 2. CART PAGE (Sundar Cart UI)
   const renderCart = () => (
     <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
       <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '20px' }}>Your Cart</h2>
@@ -147,14 +260,14 @@ function App() {
               <div style={{ fontWeight: '800', fontSize: '16px' }}>₹{item.price * item.qty}</div>
             </div>
           ))}
-          
+
           <div style={{ marginTop: '20px', background: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontWeight: '600' }}><span>Item Total</span><span>₹{cartTotalAmount}</span></div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontWeight: '600' }}><span>Delivery Fee</span><span style={{ color: '#10b981' }}>FREE</span></div>
             <hr style={{ border: 0, borderTop: '1px dashed #e5e7eb', margin: '15px 0' }} />
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '18px' }}><span>Grand Total</span><span>₹{cartTotalAmount}</span></div>
           </div>
-          
+
           <button style={{ width: '100%', background: '#ff005c', color: '#fff', padding: '16px', borderRadius: '12px', fontWeight: '800', fontSize: '16px', border: 'none', marginTop: '20px', cursor: 'pointer', boxShadow: '0 4px 15px rgba(255,0,92,0.3)' }}>
             Proceed to Pay ₹{cartTotalAmount}
           </button>
@@ -163,46 +276,181 @@ function App() {
     </div>
   );
 
-  // 3. ORDERS PAGE
   const renderOrders = () => (
-    <div style={{ padding: '20px', textAlign: 'center', marginTop: '50px' }}>
-      <img src="https://cdn-icons-png.flaticon.com/512/3500/3500833.png" style={{ width: '80px', marginBottom: '20px', opacity: 0.8 }} alt="Orders" />
-      <h2 style={{ fontWeight: '800', fontSize: '20px' }}>No Active Orders</h2>
-      <p style={{ color: '#666', marginTop: '10px', fontSize: '14px' }}>Your recent orders and tracking details will appear here.</p>
+    <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '20px' }}>My Orders</h2>
+      {useBackend ? (
+        orders.length > 0 ? (
+          orders.map((order) => (
+            <div key={order._id} style={{ background: '#fff', padding: '18px', borderRadius: '16px', marginBottom: '14px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div>
+                  <strong>Order # {order.orderNumber}</strong>
+                  <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>{order.orderStatus}</p>
+                </div>
+                <div style={{ fontWeight: '800', color: '#111' }}>₹{order.totalAmount}</div>
+              </div>
+              <div style={{ fontSize: '13px', color: '#4b5563' }}>
+                {order.items?.map((item) => (
+                  <div key={item._id || item.name} style={{ marginBottom: '5px' }}>{item.quantity} x {item.name}</div>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div style={{ textAlign: 'center', marginTop: '80px', color: '#9ca3af' }}>
+            <img src="https://cdn-icons-png.flaticon.com/512/3500/3500833.png" style={{ width: '70px', marginBottom: '20px', opacity: 0.8 }} alt="Orders" />
+            <p style={{ fontWeight: '700' }}>No orders found</p>
+            <p style={{ fontSize: '13px', marginTop: '8px' }}>Your past orders will appear here when backend is connected.</p>
+          </div>
+        )
+      ) : (
+        <div style={{ textAlign: 'center', marginTop: '80px', color: '#9ca3af' }}>
+          <img src="https://cdn-icons-png.flaticon.com/512/3500/3500833.png" style={{ width: '70px', marginBottom: '20px', opacity: 0.8 }} alt="Orders" />
+          <p style={{ fontWeight: '700' }}>Backend not connected</p>
+          <p style={{ fontSize: '13px', marginTop: '8px' }}>Add VITE_API_URL to your frontend environment to load real orders.</p>
+        </div>
+      )}
     </div>
   );
 
-  // 4. ACCOUNT PAGE
   const renderAccount = () => (
     <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', background: '#fff', padding: '20px', borderRadius: '16px', marginBottom: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
         <div style={{ width: '60px', height: '60px', background: '#e5e7eb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '15px', fontSize: '24px' }}>👤</div>
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '800' }}>My Profile</h2>
-          <p style={{ color: '#666', fontSize: '13px', marginTop: '4px' }}>+91 9876543210</p>
+          <h2 style={{ fontSize: '18px', fontWeight: '800' }}>{user.name}</h2>
+          <p style={{ color: '#666', fontSize: '13px', marginTop: '4px' }}>{user.email}</p>
         </div>
       </div>
-      
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '10px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-        <div style={{ padding: '15px 0', borderBottom: '1px solid #f3f4f6', fontWeight: '600', display: 'flex', justifyContent: 'space-between' }}><span>📍 Saved Addresses</span> <span>›</span></div>
-        <div style={{ padding: '15px 0', borderBottom: '1px solid #f3f4f6', fontWeight: '600', display: 'flex', justifyContent: 'space-between' }}><span>💬 Support & Help</span> <span>›</span></div>
-        <div style={{ padding: '15px 0', fontWeight: '600', color: '#ff005c', display: 'flex', justifyContent: 'space-between' }}><span>🚪 Logout</span> </div>
+
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
+        <div style={{ marginBottom: '12px', color: '#6b7280', fontWeight: '700' }}>Wallet Balance</div>
+        <div style={{ fontSize: '32px', fontWeight: '800' }}>₹{wallet?.balance ?? 0}</div>
+        <p style={{ marginTop: '10px', color: '#4b5563', fontSize: '13px' }}>{wallet ? wallet.transactions?.length + ' transactions' : 'Connect backend to show wallet transactions.'}</p>
+      </div>
+
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+        <div style={{ padding: '15px 0', borderBottom: '1px solid #f3f4f6', fontWeight: '600', display: 'flex', justifyContent: 'space-between' }}><span>Saved Addresses</span> <span>›</span></div>
+        <div style={{ padding: '15px 0', borderBottom: '1px solid #f3f4f6', fontWeight: '600', display: 'flex', justifyContent: 'space-between' }}><span>Support & Help</span> <span>›</span></div>
+        <div style={{ padding: '15px 0', fontWeight: '600', color: '#ff005c', display: 'flex', justifyContent: 'space-between' }}><span>Logout</span></div>
+      </div>
+
+      <div style={{ marginTop: '20px', background: '#fff', borderRadius: '16px', padding: '15px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
+        {backendMessage}
       </div>
     </div>
   );
 
+  const renderAdmin = () => {
+    const summaryCards = [
+      { label: 'Users', value: adminData.users.length },
+      { label: 'Orders', value: adminData.orders.length },
+      { label: 'Inventory', value: adminData.inventory.length },
+      { label: 'Wallets', value: adminData.wallets.length },
+      { label: 'Partners', value: adminData.partners.length },
+      { label: 'Admins', value: adminData.admins.length }
+    ];
+    const listData = adminData[adminView] || [];
+
+    return (
+      <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div>
+            <h2 style={{ fontSize: '20px', fontWeight: '800' }}>Sevzo Admin</h2>
+            <p style={{ marginTop: '4px', color: '#6b7280', fontSize: '13px' }}>{adminMessage}</p>
+          </div>
+          <button onClick={fetchAdminData} style={{ background: '#ff005c', color: '#fff', padding: '10px 16px', borderRadius: '12px', border: 'none', fontWeight: '700', cursor: 'pointer' }}>Refresh</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px', marginBottom: '18px' }}>
+          {summaryCards.map(card => (
+            <div key={card.label} style={{ background: '#fff', borderRadius: '16px', padding: '18px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '8px', fontWeight: '700' }}>{card.label}</div>
+              <div style={{ fontSize: '28px', fontWeight: '800' }}>{card.value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: '#fff', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+            {['summary', 'users', 'orders', 'inventory', 'wallets', 'partners', 'admins'].map(section => (
+              <button
+                key={section}
+                onClick={() => setAdminView(section)}
+                style={{
+                  background: adminView === section ? '#ff005c' : '#f3f4f6',
+                  color: adminView === section ? '#fff' : '#111',
+                  padding: '8px 12px',
+                  borderRadius: '999px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: '12px'
+                }}
+              >
+                {section.charAt(0).toUpperCase() + section.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {adminLoading ? (
+            <p style={{ color: '#6b7280', fontWeight: '700' }}>Loading admin data...</p>
+          ) : adminView === 'summary' ? (
+            <div style={{ color: '#4b5563', lineHeight: '1.7' }}>
+              <p>Use the admin panel to review users, orders, inventory, wallets, delivery partners, and system admins.</p>
+              <p>Tap any list button to inspect details and use delete actions where needed.</p>
+            </div>
+          ) : (
+            <div>
+              {listData.length === 0 ? (
+                <p style={{ color: '#9ca3af', fontWeight: '700' }}>No records found for {adminView}.</p>
+              ) : (
+                listData.map(item => (
+                  <div key={item._id || item.id || item.name || JSON.stringify(item)} style={{ marginBottom: '12px', background: '#f9fafb', borderRadius: '14px', padding: '14px', border: '1px solid #f1f5f9' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '700', marginBottom: '4px' }}>
+                          {adminView === 'users' && item.name}
+                          {adminView === 'orders' && item.orderNumber}
+                          {adminView === 'inventory' && item.productName}
+                          {adminView === 'wallets' && `${item.ownerType} ${item.balance ?? ''}`}
+                          {adminView === 'partners' && item.name}
+                          {adminView === 'admins' && item.name}
+                        </div>
+                        <div style={{ color: '#6b7280', fontSize: '13px' }}>
+                          {adminView === 'users' && item.email}
+                          {adminView === 'orders' && `${item.orderStatus} • ₹${item.totalAmount}`}
+                          {adminView === 'inventory' && `${item.category || ''} • ₹${item.price}`}
+                          {adminView === 'wallets' && `${item.ownerType} • ${item.currency}`}
+                          {adminView === 'partners' && `${item.email || ''} • ${item.status || ''}`}
+                          {adminView === 'admins' && item.email}
+                        </div>
+                      </div>
+                      <button onClick={() => handleDeleteItem(adminView, item._id || item.id)} style={{ background: '#ff005c', color: '#fff', padding: '8px 12px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="app-container">
-      
-      {/* Dynamic Page Rendering (Jo tab click hoga, wo page dikhega) */}
       <div style={{ paddingBottom: '70px' }}>
         {currentTab === 'Home' && renderHome()}
         {currentTab === 'Cart' && renderCart()}
         {currentTab === 'Orders' && renderOrders()}
         {currentTab === 'Account' && renderAccount()}
+        {currentTab === 'Admin' && renderAdmin()}
       </div>
 
-      {/* BOTTOM NAV (Premium Clickable Tabs) */}
       <div className="bottom-nav">
         <div className={`nav-item ${currentTab === 'Home' ? 'active' : ''}`} onClick={() => setCurrentTab('Home')}>
           <i className="fas fa-home"></i>Home
@@ -221,8 +469,10 @@ function App() {
         <div className={`nav-item ${currentTab === 'Account' ? 'active' : ''}`} onClick={() => setCurrentTab('Account')}>
           <i className="fas fa-user"></i>Account
         </div>
+        <div className={`nav-item ${currentTab === 'Admin' ? 'active' : ''}`} onClick={() => setCurrentTab('Admin')}>
+          <i className="fas fa-shield-alt"></i>Admin
+        </div>
       </div>
-
     </div>
   );
 }
