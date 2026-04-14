@@ -24,6 +24,12 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminView, setAdminView] = useState('summary');
   const [adminMessage, setAdminMessage] = useState('Admin panel is ready.');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminToken, setAdminToken] = useState('');
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [adminLoginError, setAdminLoginError] = useState('');
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
 
   const API_BASE = import.meta.env.VITE_API_URL || 'https://sevzo-backend.vercel.app';
   const useBackend = true;
@@ -36,37 +42,43 @@ function App() {
   });
 
   const fetchAdminData = async () => {
-    if (!useBackend) return;
+    if (!useBackend || !adminToken) return;
 
     setAdminLoading(true);
     try {
-      const [usersResponse, ordersResponse, inventoryResponse, walletsResponse, partnersResponse, adminsResponse] = await Promise.all([
-        axios.get(`${API_BASE}/api/users`),
-        axios.get(`${API_BASE}/api/orders`),
-        axios.get(`${API_BASE}/api/inventory`),
-        axios.get(`${API_BASE}/api/wallets`),
-        axios.get(`${API_BASE}/api/delivery-partners`),
-        axios.get(`${API_BASE}/api/admins`)
-      ]);
+      const response = await axios.get(`${API_BASE}/api/admins/dashboard`, {
+        headers: {
+          Authorization: `Bearer ${adminToken}`
+        }
+      });
 
+      const data = response.data || {};
       setAdminData({
-        users: Array.isArray(usersResponse.data) ? usersResponse.data : [],
-        orders: Array.isArray(ordersResponse.data) ? ordersResponse.data : [],
-        inventory: Array.isArray(inventoryResponse.data) ? inventoryResponse.data : [],
-        wallets: Array.isArray(walletsResponse.data) ? walletsResponse.data : [],
-        partners: Array.isArray(partnersResponse.data) ? partnersResponse.data : [],
-        admins: Array.isArray(adminsResponse.data) ? adminsResponse.data : []
+        users: Array.isArray(data.users) ? data.users : [],
+        orders: Array.isArray(data.orders) ? data.orders : [],
+        inventory: Array.isArray(data.inventory) ? data.inventory : [],
+        wallets: Array.isArray(data.wallets) ? data.wallets : [],
+        partners: Array.isArray(data.partners) ? data.partners : [],
+        admins: Array.isArray(data.admins) ? data.admins : []
       });
       setAdminMessage('Admin data loaded successfully.');
     } catch (error) {
       console.error('Admin panel error:', error);
-      setAdminMessage('Unable to load admin data. Check backend deployment.');
+      setAdminMessage('Unable to load admin data. Check backend deployment or admin credentials.');
     } finally {
       setAdminLoading(false);
     }
   };
 
   useEffect(() => {
+    const storedToken = localStorage.getItem('sevzoAdminToken');
+    const storedEmail = localStorage.getItem('sevzoAdminEmail');
+    if (storedToken && storedEmail) {
+      setAdminToken(storedToken);
+      setAdminEmail(storedEmail);
+      setIsAdminAuthenticated(true);
+    }
+
     const fetchInventory = async () => {
       setLoading(true);
       try {
@@ -136,7 +148,7 @@ function App() {
   }, [currentTab, API_BASE]);
 
   const handleDeleteItem = async (resource, id) => {
-    if (!useBackend) return;
+    if (!useBackend || !adminToken) return;
 
     const endpointMap = {
       users: 'users',
@@ -151,12 +163,60 @@ function App() {
     if (!path) return;
 
     try {
-      await axios.delete(`${API_BASE}/api/${path}/${id}`);
+      await axios.delete(`${API_BASE}/api/${path}/${id}`, {
+        headers: {
+          Authorization: `Bearer ${adminToken}`
+        }
+      });
       setAdminMessage(`${resource.charAt(0).toUpperCase() + resource.slice(1)} deleted successfully.`);
       fetchAdminData();
     } catch (error) {
       console.error('Delete error:', error);
       setAdminMessage(`Unable to delete ${resource}.`);
+    }
+  };
+
+  const handleAdminLogin = async () => {
+    if (!adminEmail || !adminPassword) {
+      setAdminLoginError('Please enter admin email and password.');
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${API_BASE}/api/admins/login`, {
+        email: adminEmail,
+        password: adminPassword
+      });
+
+      const token = response.data.token;
+      setAdminToken(token);
+      setAdminEmail(adminEmail);
+      setIsAdminAuthenticated(true);
+      setAdminLoginError('');
+      localStorage.setItem('sevzoAdminToken', token);
+      localStorage.setItem('sevzoAdminEmail', adminEmail);
+      setAdminMessage('Admin signed in successfully.');
+      setCurrentTab('Admin');
+      setShowAdminLoginModal(false);
+      fetchAdminData();
+    } catch (error) {
+      console.error('Admin login error:', error);
+      setAdminLoginError('Admin login failed. Check email and password.');
+      setIsAdminAuthenticated(false);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setAdminToken('');
+    setIsAdminAuthenticated(false);
+    setAdminEmail('');
+    setAdminPassword('');
+    setAdminLoginError('');
+    localStorage.removeItem('sevzoAdminToken');
+    localStorage.removeItem('sevzoAdminEmail');
+    setAdminMessage('Admin logged out.');
+    if (currentTab === 'Admin') {
+      setCurrentTab('Home');
     }
   };
 
@@ -330,10 +390,35 @@ function App() {
         <p style={{ marginTop: '10px', color: '#4b5563', fontSize: '13px' }}>{wallet ? wallet.transactions?.length + ' transactions' : 'Connect backend to show wallet transactions.'}</p>
       </div>
 
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
         <div style={{ padding: '15px 0', borderBottom: '1px solid #f3f4f6', fontWeight: '600', display: 'flex', justifyContent: 'space-between' }}><span>Saved Addresses</span> <span>›</span></div>
         <div style={{ padding: '15px 0', borderBottom: '1px solid #f3f4f6', fontWeight: '600', display: 'flex', justifyContent: 'space-between' }}><span>Support & Help</span> <span>›</span></div>
         <div style={{ padding: '15px 0', fontWeight: '600', color: '#ff005c', display: 'flex', justifyContent: 'space-between' }}><span>Logout</span></div>
+      </div>
+
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+        {!isAdminAuthenticated ? (
+          <div style={{ display: 'grid', gap: '12px' }}>
+            <div style={{ fontWeight: '700', color: '#111' }}>Admin Access</div>
+            <div style={{ color: '#6b7280', fontSize: '13px' }}>Only authorized admins can open the dashboard. Use the login modal to authenticate.</div>
+            <button
+              onClick={() => setShowAdminLoginModal(true)}
+              style={{ width: '100%', background: '#111', color: '#fff', padding: '14px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: '700' }}
+            >
+              Open admin login
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: '700' }}>Admin access enabled</div>
+              <div style={{ color: '#6b7280', fontSize: '13px' }}>{adminEmail}</div>
+            </div>
+            <button onClick={handleAdminLogout} style={{ background: '#ff005c', color: '#fff', padding: '12px 16px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+              Logout
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: '20px', background: '#fff', borderRadius: '16px', padding: '15px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
@@ -469,10 +554,47 @@ function App() {
         <div className={`nav-item ${currentTab === 'Account' ? 'active' : ''}`} onClick={() => setCurrentTab('Account')}>
           <i className="fas fa-user"></i>Account
         </div>
-        <div className={`nav-item ${currentTab === 'Admin' ? 'active' : ''}`} onClick={() => setCurrentTab('Admin')}>
-          <i className="fas fa-shield-alt"></i>Admin
-        </div>
+        {isAdminAuthenticated && (
+          <div className={`nav-item ${currentTab === 'Admin' ? 'active' : ''}`} onClick={() => setCurrentTab('Admin')}>
+            <i className="fas fa-shield-alt"></i>Admin
+          </div>
+        )}
       </div>
+
+      {showAdminLoginModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ width: '100%', maxWidth: '420px', background: '#fff', borderRadius: '24px', padding: '24px', boxShadow: '0 25px 60px rgba(0,0,0,0.18)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '20px' }}>Admin Login</h3>
+                <p style={{ margin: '8px 0 0', color: '#6b7280', fontSize: '13px' }}>Enter your admin credentials to view the dashboard.</p>
+              </div>
+              <button onClick={() => setShowAdminLoginModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer' }}>×</button>
+            </div>
+            <input
+              value={adminEmail}
+              onChange={(e) => setAdminEmail(e.target.value)}
+              type="email"
+              placeholder="Admin email"
+              style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #d1d5db', marginBottom: '14px' }}
+            />
+            <input
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+              type="password"
+              placeholder="Admin password"
+              style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #d1d5db', marginBottom: '14px' }}
+            />
+            {adminLoginError && <div style={{ color: '#dc2626', marginBottom: '14px', fontSize: '13px' }}>{adminLoginError}</div>}
+            <button
+              onClick={handleAdminLogin}
+              style={{ width: '100%', background: '#111', color: '#fff', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontWeight: '700' }}
+            >
+              Sign in as admin
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
