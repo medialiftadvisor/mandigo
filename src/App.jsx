@@ -991,122 +991,112 @@ function App() {
     }
 
     return (
-      <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
-        <div style={{ display: 'flex', alignItems: 'center', background: '#fff', padding: '20px', borderRadius: '16px', marginBottom: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-          <div style={{ width: '60px', height: '60px', background: '#e5e7eb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '15px', fontSize: '24px' }}>👤</div>
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: '800' }}>{accountName}</h2>
-            <p style={{ color: '#666', fontSize: '13px', marginTop: '4px' }}>{accountEmail}</p>
-            <p style={{ color: '#4b5563', fontSize: '12px', marginTop: '4px' }}>{accountRole}</p>
-          </div>
-        </div>
+      <div className="page-shell">
+        <div className="account-summary-card panel-card">
+          <div className="profile-avatar">👤</div>
+          <div>
+            <h2>{accountName}</h2>
+            <p className="muted-text">{accountEmail}</p>
+            <p className="muted-text">{accountRole}</p>
+          </div>
+        </div>
 
-        {user && (
-          <>
-            <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
-              <div style={{ marginBottom: '12px', color: '#6b7280', fontWeight: '700' }}>Wallet Balance</div>
-              <div style={{ fontSize: '32px', fontWeight: '800' }}>₹{wallet?.balance ?? 0}</div>
-              <p style={{ marginTop: '10px', color: '#4b5563', fontSize: '13px' }}>{wallet ? wallet.transactions?.length + ' transactions' : 'Connect backend to show wallet transactions.'}</p>
-            </div>
+        {user && (
+          <>
+            <div className="panel-card wallet-card">
+              <div className="section-label">Wallet Balance</div>
+              <div className="wallet-amount">₹{wallet?.balance ?? 0}</div>
+              <p className="muted-text">{wallet ? wallet.transactions?.length + ' transactions' : 'Connect backend to show wallet transactions.'}</p>
+            </div>
 
-            <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
-              <div style={{ marginBottom: '14px', fontWeight: '700' }}>Delivery Address</div>
-              <input
-                value={profileAddress.line1}
-                onChange={(e) => setProfileAddress((prev) => ({ ...prev, line1: e.target.value }))}
-                placeholder="Address line 1"
-                style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
-              />
-              <input
-                value={profileAddress.line2}
-                onChange={(e) => setProfileAddress((prev) => ({ ...prev, line2: e.target.value }))}
-                placeholder="Address line 2"
-                style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
-              />
-              <input
-                value={profileAddress.city}
-                onChange={(e) => setProfileAddress((prev) => ({ ...prev, city: e.target.value }))}
-                placeholder="City"
-                style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
-              />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <input
-                  value={profileAddress.state}
-                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, state: e.target.value }))}
-                  placeholder="State"
-                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb' }}
-                />
-                <input
-                  value={profileAddress.postalCode}
-                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, postalCode: e.target.value }))}
-                  placeholder="Postal code"
-                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb' }}
-                />
-              </div>
-              <input
-                value={profileAddress.country}
-                onChange={(e) => setProfileAddress((prev) => ({ ...prev, country: e.target.value }))}
-                placeholder="Country"
-                style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
-              />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <input
-                  value={profileAddress.location.latitude}
-                  readOnly
-                  placeholder="Latitude"
-                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb' }}
-                />
-                <input
-                  value={profileAddress.location.longitude}
-                  readOnly
-                  placeholder="Longitude"
-                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button onClick={captureLocation} style={{ flex: 1, background: '#111827', color: '#fff', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
-                  Capture GPS
-                </button>
-                <button onClick={handleProfileSave} style={{ flex: 1, background: '#ff005c', color: '#fff', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
-                  Save Profile
-                </button>
-              </div>
-            </div>
+            <div className="panel-card form-card">
+              <div className="section-label">Delivery Address</div>
+              <div className="form-grid">
+                <input
+                  value={profileAddress.line1}
+                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, line1: e.target.value }))}
+                  placeholder="Address line 1"
+                  className="form-input"
+                />
+                <input
+                  value={profileAddress.line2}
+                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, line2: e.target.value }))}
+                  placeholder="Address line 2"
+                  className="form-input"
+                />
+                <input
+                  value={profileAddress.city}
+                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, city: e.target.value }))}
+                  placeholder="City"
+                  className="form-input"
+                />
+                <input
+                  value={profileAddress.state}
+                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, state: e.target.value }))}
+                  placeholder="State"
+                  className="form-input"
+                />
+                <input
+                  value={profileAddress.postalCode}
+                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, postalCode: e.target.value }))}
+                  placeholder="Postal code"
+                  className="form-input"
+                />
+                <input
+                  value={profileAddress.country}
+                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, country: e.target.value }))}
+                  placeholder="Country"
+                  className="form-input"
+                />
+                <input
+                  value={profileAddress.location.latitude}
+                  readOnly
+                  placeholder="Latitude"
+                  className="form-input"
+                />
+                <input
+                  value={profileAddress.location.longitude}
+                  readOnly
+                  placeholder="Longitude"
+                  className="form-input"
+                />
+              </div>
+              <div className="button-row">
+                <button onClick={captureLocation} className="secondary-button">Capture GPS</button>
+                <button onClick={handleProfileSave} className="primary-button">Save Profile</button>
+              </div>
+            </div>
           </>
         )}
 
         {partner && (
-          <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
-            <div style={{ marginBottom: '14px', fontWeight: '700' }}>Delivery Partner Status</div>
-            <div style={{ color: '#4b5563', fontSize: '14px', marginBottom: '10px' }}>Vehicle: {partner.vehicleType || 'Not specified'}</div>
-            <div style={{ color: '#4b5563', fontSize: '14px', marginBottom: '10px' }}>Availability: {partner.isAvailable ? 'Available' : 'Not available'}</div>
-            <div style={{ color: '#4b5563', fontSize: '14px' }}>Current GPS: {partner.currentLocation?.latitude ? `${partner.currentLocation.latitude.toFixed(4)}, ${partner.currentLocation.longitude.toFixed(4)}` : 'Not set'}</div>
-            <button onClick={handleSignOut} style={{ marginTop: '16px', width: '100%', background: '#111827', color: '#fff', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
-              Sign Out Partner
-            </button>
-          </div>
-        )}
+          <div className="panel-card form-card">
+            <div className="section-label">Delivery Partner Status</div>
+            <div className="form-grid">
+              <div className="form-note"><strong>Vehicle:</strong> {partner.vehicleType || 'Not specified'}</div>
+              <div className="form-note"><strong>Availability:</strong> {partner.isAvailable ? 'Available' : 'Not available'}</div>
+              <div className="form-note"><strong>Current GPS:</strong> {partner.currentLocation?.latitude ? `${partner.currentLocation.latitude.toFixed(4)}, ${partner.currentLocation.longitude.toFixed(4)}` : 'Not set'}</div>
+            </div>
+            <button onClick={handleSignOut} className="primary-button" style={{ marginTop: '16px' }}>
+              Sign Out Partner
+            </button>
+          </div>
+        )}
 
-        <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-          <div style={{ fontWeight: '700', marginBottom: '10px' }}>Quick Actions</div>
-          <div style={{ display: 'grid', gap: '12px' }}>
-            <button onClick={() => setCurrentTab('Orders')} style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', background: '#fff', color: '#111', cursor: 'pointer', fontWeight: '700' }}>
-              View your orders
-            </button>
-            <button onClick={() => setCurrentTab('Home')} style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', background: '#fff', color: '#111', cursor: 'pointer', fontWeight: '700' }}>
-              Browse inventory
-            </button>
-            <button onClick={handleSignOut} style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: '#111827', color: '#fff', cursor: 'pointer', fontWeight: '700' }}>
-              Sign Out
-            </button>
-          </div>
-        </div>
+        <div className="panel-card action-card">
+          <div className="section-label">Quick Actions</div>
+          <div className="button-grid">
+            <button onClick={() => setCurrentTab('Orders')} className="secondary-button">View your orders</button>
+            <button onClick={() => setCurrentTab('Home')} className="secondary-button">Browse inventory</button>
+            <button onClick={handleSignOut} className="primary-button">Sign Out</button>
+          </div>
 
-        <div style={{ marginTop: '20px', background: '#fff', borderRadius: '16px', padding: '15px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
-          {backendMessage}
-        </div>
-      </div>
-    );
+          <div className="panel-note">
+            {backendMessage}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderAdmin = () => {
