@@ -85,6 +85,16 @@ body {
   color: #9ca3af;
 }
 
+.notification-banner {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ffe4eb 0%, #ffccf2 100%);
+  color: #be185d;
+  font-weight: 700;
+  font-size: 13px;
+}
+
 /* Category Slider */
 .category-section {
   padding: 15px 0;

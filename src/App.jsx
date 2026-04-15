@@ -18,7 +18,8 @@ function App() {
   const [cart, setCart] = useState([]);
   const [orders, setOrders] = useState([]);
   const [wallet, setWallet] = useState(null);
-  const [user, setUser] = useState({ name: 'Guest', email: 'guest@sevzo.app', _id: null });
+  const [user, setUser] = useState(null);
+  const [partner, setPartner] = useState(null);
   const [backendMessage, setBackendMessage] = useState('Connecting to Sevzo backend...');
   const [adminData, setAdminData] = useState({ users: [], orders: [], inventory: [], wallets: [], partners: [], admins: [] });
   const [adminLoading, setAdminLoading] = useState(false);
@@ -30,6 +31,29 @@ function App() {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
+  const [authType, setAuthType] = useState('user');
+  const [authMode, setAuthMode] = useState('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authName, setAuthName] = useState('');
+  const [authPhone, setAuthPhone] = useState('');
+  const [authVehicle, setAuthVehicle] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [profileAddress, setProfileAddress] = useState({
+    line1: '',
+    line2: '',
+    city: '',
+    state: '',
+    postalCode: '',
+    country: '',
+    location: { latitude: '', longitude: '' }
+  });
+  const [trackingOrder, setTrackingOrder] = useState(null);
+  const [deliveryPinInput, setDeliveryPinInput] = useState('');
+  const [orderConfirmationMessage, setOrderConfirmationMessage] = useState('');
+  const [promoMessage, setPromoMessage] = useState('Save ₹100 on your first PhonePe order. Use UPI my1504@ybl.');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('upi');
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
   const API_BASE = import.meta.env.VITE_API_URL || 'https://sevzo-backend.vercel.app';
   const useBackend = true;
@@ -39,6 +63,7 @@ function App() {
     name: item.productName || item.name || item.title || 'Unnamed Item',
     price: item.price || item.cost || 0,
     image_url: item.image || item.image_url || item.photo || item.photo_url || '',
+    category: item.category || item.type || 'General'
   });
 
   const fetchAdminData = async () => {
@@ -99,14 +124,30 @@ function App() {
   }, [activeCat, API_BASE]);
 
   useEffect(() => {
+    const storedUserEmail = localStorage.getItem('sevzoUserEmail');
+    const storedPartnerEmail = localStorage.getItem('sevzoPartnerEmail');
+
     const fetchUserData = async () => {
+      if (!storedUserEmail) return;
       try {
-        const usersResponse = await axios.get(`${API_BASE}/api/users?email=customer@sevzo.app&limit=1`);
+        const usersResponse = await axios.get(`${API_BASE}/api/users?email=${encodeURIComponent(storedUserEmail)}&limit=1`);
         const foundUser = Array.isArray(usersResponse.data) && usersResponse.data.length > 0
           ? usersResponse.data[0]
           : null;
         if (foundUser) {
           setUser(foundUser);
+          setProfileAddress({
+            line1: foundUser.address?.line1 || '',
+            line2: foundUser.address?.line2 || '',
+            city: foundUser.address?.city || '',
+            state: foundUser.address?.state || '',
+            postalCode: foundUser.address?.postalCode || '',
+            country: foundUser.address?.country || '',
+            location: {
+              latitude: foundUser.address?.location?.latitude || '',
+              longitude: foundUser.address?.location?.longitude || ''
+            }
+          });
           setBackendMessage('Connected to backend user data successfully.');
         }
       } catch (error) {
@@ -114,24 +155,48 @@ function App() {
       }
     };
 
+    const fetchPartnerData = async () => {
+      if (!storedPartnerEmail) return;
+      try {
+        const partnerResponse = await axios.get(`${API_BASE}/api/delivery-partners?email=${encodeURIComponent(storedPartnerEmail)}&limit=1`);
+        const foundPartner = Array.isArray(partnerResponse.data) && partnerResponse.data.length > 0
+          ? partnerResponse.data[0]
+          : null;
+        if (foundPartner) {
+          setPartner(foundPartner);
+          setBackendMessage('Connected to backend delivery partner data successfully.');
+        }
+      } catch (error) {
+        console.error('Partner fetch error:', error);
+      }
+    };
+
     fetchUserData();
+    fetchPartnerData();
   }, [API_BASE]);
 
   useEffect(() => {
     const fetchBackendDetails = async () => {
-      if (!user?._id) return;
-
       try {
-        const [walletResponse, ordersResponse] = await Promise.all([
-          axios.get(`${API_BASE}/api/wallets?ownerType=User&ownerId=${user._id}`),
-          axios.get(`${API_BASE}/api/orders?userId=${user._id}`)
-        ]);
+        if (user?._id) {
+          const [walletResponse, ordersResponse] = await Promise.all([
+            axios.get(`${API_BASE}/api/wallets?ownerType=User&ownerId=${user._id}`),
+            axios.get(`${API_BASE}/api/orders?userId=${user._id}`)
+          ]);
 
-        if (Array.isArray(walletResponse.data) && walletResponse.data.length > 0) {
-          setWallet(walletResponse.data[0]);
+          if (Array.isArray(walletResponse.data) && walletResponse.data.length > 0) {
+            setWallet(walletResponse.data[0]);
+          }
+          if (Array.isArray(ordersResponse.data)) {
+            setOrders(ordersResponse.data);
+          }
         }
-        if (Array.isArray(ordersResponse.data)) {
-          setOrders(ordersResponse.data);
+
+        if (partner?._id) {
+          const partnerOrdersResponse = await axios.get(`${API_BASE}/api/orders?deliveryPartner=${partner._id}`);
+          if (Array.isArray(partnerOrdersResponse.data)) {
+            setOrders(partnerOrdersResponse.data);
+          }
         }
       } catch (error) {
         console.error('Backend details error:', error);
@@ -139,7 +204,7 @@ function App() {
     };
 
     fetchBackendDetails();
-  }, [API_BASE, user]);
+  }, [API_BASE, user, partner]);
 
   useEffect(() => {
     if (currentTab === 'Admin') {
@@ -220,6 +285,217 @@ function App() {
     }
   };
 
+  const saveUserInLocalStorage = (userData) => {
+    localStorage.setItem('sevzoUserEmail', userData.email);
+    localStorage.removeItem('sevzoPartnerEmail');
+  };
+
+  const savePartnerInLocalStorage = (partnerData) => {
+    localStorage.setItem('sevzoPartnerEmail', partnerData.email);
+    localStorage.removeItem('sevzoUserEmail');
+  };
+
+  const handleSignOut = () => {
+    setUser(null);
+    setPartner(null);
+    setAuthError('');
+    localStorage.removeItem('sevzoUserEmail');
+    localStorage.removeItem('sevzoPartnerEmail');
+    setBackendMessage('Signed out successfully.');
+    setCurrentTab('Home');
+  };
+
+  const handleAuthSubmit = async () => {
+    setAuthError('');
+    const payload = {
+      email: authEmail,
+      password: authPassword
+    };
+
+    if (authMode === 'register') {
+      payload.name = authName;
+      payload.phone = authPhone;
+      if (authType === 'delivery') {
+        payload.vehicleType = authVehicle;
+      }
+    }
+
+    try {
+      if (authType === 'user') {
+        if (authMode === 'login') {
+          const response = await axios.post(`${API_BASE}/api/users/login`, payload);
+          setUser(response.data);
+          saveUserInLocalStorage(response.data);
+          setBackendMessage('User signed in successfully.');
+        } else {
+          const response = await axios.post(`${API_BASE}/api/users`, payload);
+          setUser(response.data);
+          saveUserInLocalStorage(response.data);
+          setBackendMessage('User registered successfully.');
+        }
+      } else {
+        if (authMode === 'login') {
+          const response = await axios.post(`${API_BASE}/api/delivery-partners/login`, payload);
+          setPartner(response.data);
+          savePartnerInLocalStorage(response.data);
+          setBackendMessage('Delivery partner signed in successfully.');
+        } else {
+          const response = await axios.post(`${API_BASE}/api/delivery-partners`, {
+            ...payload,
+            name: authName,
+            phone: authPhone,
+            vehicleType: authVehicle
+          });
+          setPartner(response.data);
+          savePartnerInLocalStorage(response.data);
+          setBackendMessage('Delivery partner registered successfully.');
+        }
+      }
+      setCurrentTab('Home');
+      setAuthMode('login');
+      setAuthEmail('');
+      setAuthPassword('');
+      setAuthName('');
+      setAuthPhone('');
+      setAuthVehicle('');
+    } catch (error) {
+      console.error('Auth error:', error);
+      setAuthError(error?.response?.data?.error || 'Authentication failed.');
+    }
+  };
+
+  const handleProfileSave = async () => {
+    try {
+      if (!user) return;
+      const payload = {
+        name: user.name,
+        phone: user.phone,
+        address: {
+          line1: profileAddress.line1,
+          line2: profileAddress.line2,
+          city: profileAddress.city,
+          state: profileAddress.state,
+          postalCode: profileAddress.postalCode,
+          country: profileAddress.country,
+          location: {
+            latitude: profileAddress.location.latitude,
+            longitude: profileAddress.location.longitude
+          }
+        }
+      };
+      const response = await axios.put(`${API_BASE}/api/users/${user._id}`, payload);
+      setUser(response.data);
+      setOrderConfirmationMessage('Profile saved successfully.');
+      setBackendMessage('Profile updated in backend.');
+    } catch (error) {
+      console.error('Profile save error:', error);
+      setAuthError('Unable to save profile.');
+    }
+  };
+
+  const captureLocation = () => {
+    if (!navigator.geolocation) {
+      setAuthError('Geolocation is not supported by this browser.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setProfileAddress((prev) => ({
+          ...prev,
+          location: {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          }
+        }));
+        setAuthError('GPS location captured. Save your profile to store it.');
+      },
+      () => {
+        setAuthError('Unable to capture GPS location. Please allow location access.');
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+
+  const handlePayWithPhonePe = async () => {
+    if (!user) {
+      setAuthError('Please sign in as a user to place an order.');
+      setCurrentTab('Account');
+      return;
+    }
+    if (!cart.length) {
+      setAuthError('Your cart is empty. Add items before checkout.');
+      return;
+    }
+    if (!profileAddress.line1) {
+      setAuthError('Add a delivery address before checkout.');
+      setCurrentTab('Account');
+      return;
+    }
+
+    try {
+      const deliveryPin = `${Math.floor(1000 + Math.random() * 9000)}`;
+      const orderPayload = {
+        orderNumber: `MDG${Date.now()}`,
+        user: user._id,
+        items: cart.map((item) => ({ inventory: item.id, name: item.name, quantity: item.qty, price: item.price, total: item.price * item.qty })),
+        totalAmount: cartTotalAmount,
+        paymentMethod: selectedPaymentMethod,
+        paymentStatus: 'pending',
+        orderStatus: 'confirmed',
+        deliveryPin,
+        shippingAddress: {
+          line1: profileAddress.line1,
+          line2: profileAddress.line2,
+          city: profileAddress.city,
+          state: profileAddress.state,
+          postalCode: profileAddress.postalCode,
+          country: profileAddress.country
+        }
+      };
+
+      const response = await axios.post(`${API_BASE}/api/orders`, orderPayload);
+      const newOrder = response.data;
+      setOrders((prev) => [newOrder, ...prev]);
+      setTrackingOrder(newOrder);
+      setOrderConfirmationMessage(`Order created. Pay on PhonePe using my1504@ybl and confirm delivery with PIN ${deliveryPin}.`);
+      setCart([]);
+      setIsCheckoutOpen(false);
+
+      window.open(`upi://pay?pa=my1504@ybl&pn=Mandigo&am=${cartTotalAmount}&cu=INR&tn=Mandigo+Order`, '_blank');
+    } catch (error) {
+      console.error('Payment error:', error);
+      setAuthError('Unable to create order at this time.');
+    }
+  };
+
+  const handleOrderTrack = (order) => {
+    setTrackingOrder(order);
+    setCurrentTab('Orders');
+  };
+
+  const handleConfirmDeliveryPin = async () => {
+    if (!trackingOrder) return;
+    if (deliveryPinInput !== trackingOrder.deliveryPin) {
+      setAuthError('Delivery PIN does not match.');
+      return;
+    }
+
+    try {
+      const response = await axios.put(`${API_BASE}/api/orders/${trackingOrder._id}`, {
+        orderStatus: 'delivered',
+        deliveryConfirmed: true
+      });
+      setTrackingOrder(response.data);
+      setOrders((prev) => prev.map((order) => order._id === response.data._id ? response.data : order));
+      setOrderConfirmationMessage('Delivery confirmed. Thank you!');
+      setDeliveryPinInput('');
+    } catch (error) {
+      console.error('Delivery confirm error:', error);
+      setAuthError('Unable to confirm delivery pin.');
+    }
+  };
+
   const addToCart = (product) => {
     const existingItem = cart.find(item => item.id === product.id);
     if (existingItem) {
@@ -234,6 +510,7 @@ function App() {
 
   const renderHome = () => {
     const filteredProducts = products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    const categoryOptions = ['All', ...Array.from(new Set(products.map((p) => p.category).filter(Boolean)))];
 
     return (
       <>
@@ -249,21 +526,22 @@ function App() {
             <i className="fas fa-search"></i>
             <input type="text" placeholder="Search Tomatoes, Atta, Milk..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
           </div>
+          <div className="notification-banner">{promoMessage}</div>
         </div>
 
         <div className="category-section">
           <h3 className="section-title">Grocery & Kitchen</h3>
           <div className="cat-scroll-container">
-            <div className={`cat-box ${activeCat === 'All' ? 'active' : ''}`} onClick={() => { setActiveCat('All'); setSearchQuery(''); }}>
-              <div className="cat-img-wrapper" style={{ background: '#f3f4f6' }}>
-                <img src="https://cdn-icons-png.flaticon.com/512/3081/3081840.png" alt="All" />
-              </div>
-              <span>All Items</span>
-            </div>
-            {categoriesList.map((c) => (
-              <div key={c.id} className={`cat-box ${activeCat === c.name ? 'active' : ''}`} onClick={() => { setActiveCat(c.name); setSearchQuery(''); }}>
-                <div className="cat-img-wrapper" style={{ background: c.bg }}><img src={c.img} alt={c.name} /></div>
-                <span>{c.name}</span>
+            {categoryOptions.map((category, index) => (
+              <div
+                key={`${category}-${index}`}
+                className={`cat-box ${activeCat === category ? 'active' : ''}`}
+                onClick={() => { setActiveCat(category); setSearchQuery(''); }}
+              >
+                <div className="cat-img-wrapper" style={{ background: index === 0 ? '#f3f4f6' : '#eef2ff' }}>
+                  <img src={index === 0 ? 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png' : 'https://cdn-icons-png.flaticon.com/512/3124/3124423.png'} alt={category} />
+                </div>
+                <span>{category}</span>
               </div>
             ))}
           </div>
@@ -328,104 +606,355 @@ function App() {
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '18px' }}><span>Grand Total</span><span>₹{cartTotalAmount}</span></div>
           </div>
 
-          <button style={{ width: '100%', background: '#ff005c', color: '#fff', padding: '16px', borderRadius: '12px', fontWeight: '800', fontSize: '16px', border: 'none', marginTop: '20px', cursor: 'pointer', boxShadow: '0 4px 15px rgba(255,0,92,0.3)' }}>
-            Proceed to Pay ₹{cartTotalAmount}
+          <div style={{ marginTop: '18px', background: '#fff', borderRadius: '16px', padding: '18px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', lineHeight: '1.6' }}>
+            <div style={{ fontWeight: '700', marginBottom: '8px' }}>PhonePe Payment</div>
+            <div style={{ fontSize: '14px', color: '#4b5563' }}>Use UPI ID <strong>my1504@ybl</strong> to complete payment from PhonePe. Tap continue to place the order and open PhonePe.</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px' }}>
+              <span style={{ fontWeight: '700' }}>UPI ID</span>
+              <span style={{ color: '#111' }}>my1504@ybl</span>
+            </div>
+          </div>
+
+          <button
+            onClick={handlePayWithPhonePe}
+            style={{ width: '100%', background: '#0e6efc', color: '#fff', padding: '16px', borderRadius: '12px', fontWeight: '800', fontSize: '16px', border: 'none', marginTop: '20px', cursor: 'pointer', boxShadow: '0 4px 15px rgba(14,110,252,0.25)' }}
+          >
+            Pay with PhonePe ₹{cartTotalAmount}
           </button>
+
+          {orderConfirmationMessage && (
+            <div style={{ marginTop: '16px', padding: '14px', background: '#ecfdf5', borderRadius: '14px', color: '#065f46', fontWeight: '700' }}>
+              {orderConfirmationMessage}
+            </div>
+          )}
         </>
       )}
     </div>
   );
 
-  const renderOrders = () => (
-    <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
-      <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '20px' }}>My Orders</h2>
-      {useBackend ? (
-        orders.length > 0 ? (
-          orders.map((order) => (
-            <div key={order._id} style={{ background: '#fff', padding: '18px', borderRadius: '16px', marginBottom: '14px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <div>
-                  <strong>Order # {order.orderNumber}</strong>
-                  <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>{order.orderStatus}</p>
+  const renderOrders = () => {
+    const mapSource = trackingOrder?.deliveryPartner?.currentLocation?.latitude && trackingOrder?.deliveryPartner?.currentLocation?.longitude
+      ? `https://maps.google.com/maps?q=${trackingOrder.deliveryPartner.currentLocation.latitude},${trackingOrder.deliveryPartner.currentLocation.longitude}&z=15&output=embed`
+      : trackingOrder?.shippingAddress?.city
+        ? `https://maps.google.com/maps?q=${encodeURIComponent(`${trackingOrder.shippingAddress.line1}, ${trackingOrder.shippingAddress.city}, ${trackingOrder.shippingAddress.state}`)}&z=15&output=embed`
+        : '';
+
+    return (
+      <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '20px' }}>{partner ? 'Delivery Dashboard' : 'My Orders'}</h2>
+
+        {authError && (
+          <div style={{ marginBottom: '14px', padding: '14px', background: '#fee2e2', borderRadius: '14px', color: '#b91c1c', fontWeight: '700' }}>{authError}</div>
+        )}
+
+        {trackingOrder && (
+          <div style={{ marginBottom: '20px', background: '#ffffff', borderRadius: '18px', padding: '18px', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
+            <div style={{ fontWeight: '800', marginBottom: '10px' }}>Tracking Order #{trackingOrder.orderNumber}</div>
+            <div style={{ fontSize: '13px', color: '#4b5563', marginBottom: '12px' }}>{trackingOrder.orderStatus.toUpperCase()} • ₹{trackingOrder.totalAmount}</div>
+            <div style={{ display: 'grid', gap: '10px', marginBottom: '12px' }}>
+              {trackingOrder.items?.map(item => (
+                <div key={item._id || item.name} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{item.quantity} x {item.name}</span>
+                  <span style={{ fontWeight: '700' }}>₹{item.total}</span>
                 </div>
-                <div style={{ fontWeight: '800', color: '#111' }}>₹{order.totalAmount}</div>
+              ))}
+            </div>
+            {mapSource ? (
+              <iframe
+                title="Delivery map"
+                src={mapSource}
+                style={{ width: '100%', height: '200px', border: '0', borderRadius: '16px', marginBottom: '12px' }}
+              />
+            ) : (
+              <div style={{ padding: '14px', background: '#f3f4f6', borderRadius: '14px', marginBottom: '12px' }}>Track delivery using the address or partner location once the order is live.</div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1 }}>
+                <strong>Delivery PIN</strong>
+                <div style={{ marginTop: '6px', color: '#6b7280' }}>{trackingOrder.deliveryPin || 'Not generated'}</div>
               </div>
-              <div style={{ fontSize: '13px', color: '#4b5563' }}>
-                {order.items?.map((item) => (
-                  <div key={item._id || item.name} style={{ marginBottom: '5px' }}>{item.quantity} x {item.name}</div>
-                ))}
+              <div style={{ flex: 1 }}>
+                <strong>Address</strong>
+                <div style={{ marginTop: '6px', color: '#6b7280' }}>{trackingOrder.shippingAddress?.line1}</div>
               </div>
             </div>
-          ))
+            {!trackingOrder.deliveryConfirmed && trackingOrder.deliveryPin && (
+              <div style={{ marginTop: '16px', display: 'grid', gap: '10px' }}>
+                <input
+                  value={deliveryPinInput}
+                  onChange={(e) => setDeliveryPinInput(e.target.value)}
+                  placeholder="Enter delivery PIN"
+                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #d1d5db' }}
+                />
+                <button onClick={handleConfirmDeliveryPin} style={{ width: '100%', background: '#10b981', color: '#fff', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+                  Confirm Delivery
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {useBackend ? (
+          orders.length > 0 ? (
+            orders.map((order) => (
+              <div key={order._id} style={{ background: '#fff', padding: '18px', borderRadius: '16px', marginBottom: '14px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div>
+                    <strong>Order # {order.orderNumber}</strong>
+                    <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>{order.orderStatus}</p>
+                  </div>
+                  <div style={{ fontWeight: '800', color: '#111' }}>₹{order.totalAmount}</div>
+                </div>
+                <div style={{ fontSize: '13px', color: '#4b5563' }}>
+                  {order.items?.map((item) => (
+                    <div key={item._id || item.name} style={{ marginBottom: '5px' }}>{item.quantity} x {item.name}</div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', gap: '10px', flexWrap: 'wrap' }}>
+                  <button onClick={() => handleOrderTrack(order)} style={{ background: '#0e6efc', color: '#fff', border: 'none', borderRadius: '12px', padding: '10px 14px', cursor: 'pointer', fontWeight: '700' }}>
+                    Track on Map
+                  </button>
+                  <div style={{ color: '#6b7280', fontSize: '13px' }}>{order.deliveryPin ? `PIN available` : 'PIN will be generated at checkout'}</div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div style={{ textAlign: 'center', marginTop: '80px', color: '#9ca3af' }}>
+              <img src="https://cdn-icons-png.flaticon.com/512/3500/3500833.png" style={{ width: '70px', marginBottom: '20px', opacity: 0.8 }} alt="Orders" />
+              <p style={{ fontWeight: '700' }}>{partner ? 'No assigned deliveries yet' : 'No orders found'}</p>
+              <p style={{ fontSize: '13px', marginTop: '8px' }}>{partner ? 'Your delivery tasks will appear once orders are assigned.' : 'Your past orders will appear here when backend is connected.'}</p>
+            </div>
+          )
         ) : (
           <div style={{ textAlign: 'center', marginTop: '80px', color: '#9ca3af' }}>
             <img src="https://cdn-icons-png.flaticon.com/512/3500/3500833.png" style={{ width: '70px', marginBottom: '20px', opacity: 0.8 }} alt="Orders" />
-            <p style={{ fontWeight: '700' }}>No orders found</p>
-            <p style={{ fontSize: '13px', marginTop: '8px' }}>Your past orders will appear here when backend is connected.</p>
-          </div>
-        )
-      ) : (
-        <div style={{ textAlign: 'center', marginTop: '80px', color: '#9ca3af' }}>
-          <img src="https://cdn-icons-png.flaticon.com/512/3500/3500833.png" style={{ width: '70px', marginBottom: '20px', opacity: 0.8 }} alt="Orders" />
-          <p style={{ fontWeight: '700' }}>Backend not connected</p>
-          <p style={{ fontSize: '13px', marginTop: '8px' }}>Add VITE_API_URL to your frontend environment to load real orders.</p>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderAccount = () => (
-    <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
-      <div style={{ display: 'flex', alignItems: 'center', background: '#fff', padding: '20px', borderRadius: '16px', marginBottom: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-        <div style={{ width: '60px', height: '60px', background: '#e5e7eb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '15px', fontSize: '24px' }}>👤</div>
-        <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '800' }}>{user.name}</h2>
-          <p style={{ color: '#666', fontSize: '13px', marginTop: '4px' }}>{user.email}</p>
-        </div>
-      </div>
-
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
-        <div style={{ marginBottom: '12px', color: '#6b7280', fontWeight: '700' }}>Wallet Balance</div>
-        <div style={{ fontSize: '32px', fontWeight: '800' }}>₹{wallet?.balance ?? 0}</div>
-        <p style={{ marginTop: '10px', color: '#4b5563', fontSize: '13px' }}>{wallet ? wallet.transactions?.length + ' transactions' : 'Connect backend to show wallet transactions.'}</p>
-      </div>
-
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
-        <div style={{ padding: '15px 0', borderBottom: '1px solid #f3f4f6', fontWeight: '600', display: 'flex', justifyContent: 'space-between' }}><span>Saved Addresses</span> <span>›</span></div>
-        <div style={{ padding: '15px 0', borderBottom: '1px solid #f3f4f6', fontWeight: '600', display: 'flex', justifyContent: 'space-between' }}><span>Support & Help</span> <span>›</span></div>
-        <div style={{ padding: '15px 0', fontWeight: '600', color: '#ff005c', display: 'flex', justifyContent: 'space-between' }}><span>Logout</span></div>
-      </div>
-
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-        {!isAdminAuthenticated ? (
-          <div style={{ display: 'grid', gap: '12px' }}>
-            <div style={{ fontWeight: '700', color: '#111' }}>Admin Access</div>
-            <div style={{ color: '#6b7280', fontSize: '13px' }}>Only authorized admins can open the dashboard. Use the login modal to authenticate.</div>
-            <button
-              onClick={() => setShowAdminLoginModal(true)}
-              style={{ width: '100%', background: '#111', color: '#fff', padding: '14px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: '700' }}
-            >
-              Open admin login
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: '700' }}>Admin access enabled</div>
-              <div style={{ color: '#6b7280', fontSize: '13px' }}>{adminEmail}</div>
-            </div>
-            <button onClick={handleAdminLogout} style={{ background: '#ff005c', color: '#fff', padding: '12px 16px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
-              Logout
-            </button>
+            <p style={{ fontWeight: '700' }}>Backend not connected</p>
+            <p style={{ fontSize: '13px', marginTop: '8px' }}>Add VITE_API_URL to your frontend environment to load real orders.</p>
           </div>
         )}
       </div>
+    );
+  };
 
-      <div style={{ marginTop: '20px', background: '#fff', borderRadius: '16px', padding: '15px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
-        {backendMessage}
+  const renderAccount = () => {
+    const accountName = user?.name || partner?.name || 'Guest';
+    const accountEmail = user?.email || partner?.email || 'guest@sevzo.app';
+    const accountRole = user ? 'User' : partner ? 'Delivery Partner' : 'Guest';
+
+    if (!user && !partner) {
+      return (
+        <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', boxShadow: '0 10px 35px rgba(15,23,42,0.08)', marginBottom: '20px' }}>
+            <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '10px' }}>Welcome to Mandigo</h2>
+            <p style={{ color: '#4b5563', lineHeight: '1.7' }}>Sign in or register as a user or delivery partner to access orders, tracking, and GPS-enabled address management.</p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <button
+              onClick={() => setAuthType('user')}
+              style={{ flex: 1, padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', background: authType === 'user' ? '#ff005c' : '#f3f4f6', color: authType === 'user' ? '#fff' : '#111', fontWeight: 700 }}
+            >
+              User
+            </button>
+            <button
+              onClick={() => setAuthType('delivery')}
+              style={{ flex: 1, padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', background: authType === 'delivery' ? '#ff005c' : '#f3f4f6', color: authType === 'delivery' ? '#fff' : '#111', fontWeight: 700 }}
+            >
+              Delivery Partner
+            </button>
+          </div>
+
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: '800' }}>{authMode === 'login' ? 'Sign In' : 'Create Account'}</div>
+                <div style={{ color: '#6b7280', fontSize: '13px' }}>{authType === 'user' ? 'Customer account' : 'Delivery partner account'}</div>
+              </div>
+              <button
+                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+                style={{ background: '#f3f4f6', border: 'none', borderRadius: '12px', padding: '10px 14px', cursor: 'pointer', color: '#111', fontWeight: 700 }}
+              >
+                {authMode === 'login' ? 'Register' : 'Login'}
+              </button>
+            </div>
+
+            {authMode === 'register' && (
+              <input
+                value={authName}
+                onChange={(e) => setAuthName(e.target.value)}
+                placeholder="Full name"
+                style={{ width: '100%', padding: '14px', borderRadius: '16px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
+              />
+            )}
+            <input
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              placeholder="Email address"
+              type="email"
+              style={{ width: '100%', padding: '14px', borderRadius: '16px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
+            />
+            <input
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+              placeholder="Password"
+              type="password"
+              style={{ width: '100%', padding: '14px', borderRadius: '16px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
+            />
+            {authMode === 'register' && (
+              <>
+                <input
+                  value={authPhone}
+                  onChange={(e) => setAuthPhone(e.target.value)}
+                  placeholder="Phone number"
+                  style={{ width: '100%', padding: '14px', borderRadius: '16px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
+                />
+                {authType === 'delivery' && (
+                  <input
+                    value={authVehicle}
+                    onChange={(e) => setAuthVehicle(e.target.value)}
+                    placeholder="Vehicle type"
+                    style={{ width: '100%', padding: '14px', borderRadius: '16px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
+                  />
+                )}
+              </>
+            )}
+
+            {authError && <div style={{ marginBottom: '12px', color: '#b91c1c', fontWeight: '700' }}>{authError}</div>}
+
+            <button
+              onClick={handleAuthSubmit}
+              style={{ width: '100%', padding: '16px', borderRadius: '16px', border: 'none', color: '#fff', background: '#111827', fontWeight: '800', cursor: 'pointer' }}
+            >
+              {authMode === 'login' ? 'Sign In' : `Register ${authType === 'delivery' ? 'Partner' : 'User'}`}
+            </button>
+          </div>
+
+          <div style={{ marginTop: '20px', background: '#fff', borderRadius: '20px', padding: '16px', color: '#4b5563', lineHeight: '1.7', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
+            <strong>Payment UPI</strong>
+            <p style={{ marginTop: '8px' }}>Use PhonePe UPI ID <strong>my1504@ybl</strong> for secure checkout.</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+        <div style={{ display: 'flex', alignItems: 'center', background: '#fff', padding: '20px', borderRadius: '16px', marginBottom: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+          <div style={{ width: '60px', height: '60px', background: '#e5e7eb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '15px', fontSize: '24px' }}>👤</div>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: '800' }}>{accountName}</h2>
+            <p style={{ color: '#666', fontSize: '13px', marginTop: '4px' }}>{accountEmail}</p>
+            <p style={{ color: '#4b5563', fontSize: '12px', marginTop: '4px' }}>{accountRole}</p>
+          </div>
+        </div>
+
+        {user && (
+          <>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
+              <div style={{ marginBottom: '12px', color: '#6b7280', fontWeight: '700' }}>Wallet Balance</div>
+              <div style={{ fontSize: '32px', fontWeight: '800' }}>₹{wallet?.balance ?? 0}</div>
+              <p style={{ marginTop: '10px', color: '#4b5563', fontSize: '13px' }}>{wallet ? wallet.transactions?.length + ' transactions' : 'Connect backend to show wallet transactions.'}</p>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
+              <div style={{ marginBottom: '14px', fontWeight: '700' }}>Delivery Address</div>
+              <input
+                value={profileAddress.line1}
+                onChange={(e) => setProfileAddress((prev) => ({ ...prev, line1: e.target.value }))}
+                placeholder="Address line 1"
+                style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
+              />
+              <input
+                value={profileAddress.line2}
+                onChange={(e) => setProfileAddress((prev) => ({ ...prev, line2: e.target.value }))}
+                placeholder="Address line 2"
+                style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
+              />
+              <input
+                value={profileAddress.city}
+                onChange={(e) => setProfileAddress((prev) => ({ ...prev, city: e.target.value }))}
+                placeholder="City"
+                style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
+              />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <input
+                  value={profileAddress.state}
+                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, state: e.target.value }))}
+                  placeholder="State"
+                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb' }}
+                />
+                <input
+                  value={profileAddress.postalCode}
+                  onChange={(e) => setProfileAddress((prev) => ({ ...prev, postalCode: e.target.value }))}
+                  placeholder="Postal code"
+                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb' }}
+                />
+              </div>
+              <input
+                value={profileAddress.country}
+                onChange={(e) => setProfileAddress((prev) => ({ ...prev, country: e.target.value }))}
+                placeholder="Country"
+                style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', marginBottom: '12px' }}
+              />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <input
+                  value={profileAddress.location.latitude}
+                  readOnly
+                  placeholder="Latitude"
+                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb' }}
+                />
+                <input
+                  value={profileAddress.location.longitude}
+                  readOnly
+                  placeholder="Longitude"
+                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button onClick={captureLocation} style={{ flex: 1, background: '#111827', color: '#fff', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+                  Capture GPS
+                </button>
+                <button onClick={handleProfileSave} style={{ flex: 1, background: '#ff005c', color: '#fff', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+                  Save Profile
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {partner && (
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginBottom: '20px' }}>
+            <div style={{ marginBottom: '14px', fontWeight: '700' }}>Delivery Partner Status</div>
+            <div style={{ color: '#4b5563', fontSize: '14px', marginBottom: '10px' }}>Vehicle: {partner.vehicleType || 'Not specified'}</div>
+            <div style={{ color: '#4b5563', fontSize: '14px', marginBottom: '10px' }}>Availability: {partner.isAvailable ? 'Available' : 'Not available'}</div>
+            <div style={{ color: '#4b5563', fontSize: '14px' }}>Current GPS: {partner.currentLocation?.latitude ? `${partner.currentLocation.latitude.toFixed(4)}, ${partner.currentLocation.longitude.toFixed(4)}` : 'Not set'}</div>
+            <button onClick={handleSignOut} style={{ marginTop: '16px', width: '100%', background: '#111827', color: '#fff', padding: '14px', borderRadius: '14px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+              Sign Out Partner
+            </button>
+          </div>
+        )}
+
+        <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+          <div style={{ fontWeight: '700', marginBottom: '10px' }}>Quick Actions</div>
+          <div style={{ display: 'grid', gap: '12px' }}>
+            <button onClick={() => setCurrentTab('Orders')} style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', background: '#fff', color: '#111', cursor: 'pointer', fontWeight: '700' }}>
+              View your orders
+            </button>
+            <button onClick={() => setCurrentTab('Home')} style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e5e7eb', background: '#fff', color: '#111', cursor: 'pointer', fontWeight: '700' }}>
+              Browse inventory
+            </button>
+            <button onClick={handleSignOut} style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: '#111827', color: '#fff', cursor: 'pointer', fontWeight: '700' }}>
+              Sign Out
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '20px', background: '#fff', borderRadius: '16px', padding: '15px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
+          {backendMessage}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderAdmin = () => {
     const summaryCards = [
