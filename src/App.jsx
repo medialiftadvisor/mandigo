@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './index.css';
 
@@ -183,10 +183,12 @@ function App() {
 
   const renderHome = () => {
     const filtered = products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    const homeLocationText = profileAddress.city ? profileAddress.city + (profileAddress.postalCode ? ' • ' + profileAddress.postalCode : '') : 'Jaipur, Rajasthan';
     return (
       <>
         <div className="top-header" style={{padding: '20px', background: '#fff'}}>
           <h2>Delivery in 10 mins</h2>
+          <p>{homeLocationText}</p>
           <div className="search-box">
             <input type="text" placeholder="Search..." onChange={(e) => setSearchQuery(e.target.value)} style={{width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #ddd'}} />
           </div>
@@ -296,3 +298,6 @@ function App() {
 }
 
 export default App;
+
+
+
