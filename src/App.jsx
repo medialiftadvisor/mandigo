@@ -3,10 +3,10 @@ import axios from 'axios';
 import './index.css';
 
 const categoriesList = [
-  { id: 1, name: 'Vegetables & Fruits', img: 'https://cdn-icons-png.flaticon.com/512/3194/3194591.png', bg: '#e8f5e9' },
-  { id: 2, name: 'Atta, Rice & Dal', img: 'https://cdn-icons-png.flaticon.com/512/3082/3082011.png', bg: '#f1f8e9' },
-  { id: 3, name: 'Oil, Ghee & Masala', img: 'https://cdn-icons-png.flaticon.com/512/3348/3348084.png', bg: '#fff8e1' },
-  { id: 4, name: 'Dairy & Eggs', img: 'https://cdn-icons-png.flaticon.com/512/3050/3050114.png', bg: '#e3f2fd' },
+  { id: 1, name: 'Vegetables & Fruits', img: 'https://cdn-icons-png.flaticon.com/512/2965/2965567.png', bg: '#d1fae5' },
+  { id: 2, name: 'Atta, Rice & Dal', img: 'https://cdn-icons-png.flaticon.com/512/892/892634.png', bg: '#fef3c7' },
+  { id: 3, name: 'Oil, Ghee & Masala', img: 'https://cdn-icons-png.flaticon.com/512/5504/5504410.png', bg: '#fff7ed' },
+  { id: 4, name: 'Dairy & Eggs', img: 'https://cdn-icons-png.flaticon.com/512/3140/3140577.png', bg: '#dbeafe' },
 ];
 
 function App() {
@@ -54,6 +54,9 @@ function App() {
   const [promoMessage, setPromoMessage] = useState('Save ₹100 on your first PhonePe order. Use UPI my1504@ybl.');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('upi');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedInventory, setSelectedInventory] = useState(null);
+  const [productEditData, setProductEditData] = useState({ description: '', images: ['', '', '', '', ''] });
 
   const API_BASE = import.meta.env.VITE_API_URL || 'https://sevzo-backend.vercel.app';
   const useBackend = true;
@@ -62,8 +65,10 @@ function App() {
     id: item._id || item.id || item.sku || item.productName || `${item.name}-${Math.random()}`,
     name: item.productName || item.name || item.title || 'Unnamed Item',
     price: item.price || item.cost || 0,
-    image_url: item.image || item.image_url || item.photo || item.photo_url || '',
-    category: item.category || item.type || 'General'
+    image_url: item.images?.[0] || item.image || item.image_url || item.photo || item.photo_url || '',
+    category: item.category || item.type || 'General',
+    description: item.description || 'No description available.',
+    images: item.images || [item.image || item.image_url || item.photo || item.photo_url || '']
   });
 
   const fetchAdminData = async () => {
@@ -496,6 +501,35 @@ function App() {
     }
   };
 
+  const openProductDetail = async (product) => {
+    try {
+      const response = await axios.get(`${API_BASE}/api/inventory/${product.id}`);
+      const item = response.data;
+      if (!item) return;
+      setSelectedProduct({
+        id: item._id,
+        name: item.productName || item.name || 'Unnamed Item',
+        price: item.price || item.cost || 0,
+        description: item.description || 'No description available.',
+        images: item.images?.length > 0 ? item.images : [item.image || item.image_url || item.photo || item.photo_url || ''],
+        category: item.category || 'General',
+        stock: item.stock,
+        sku: item.sku,
+        vendor: item.vendor,
+        raw: item
+      });
+      if (isAdminAuthenticated) {
+        setProductEditData({
+          description: item.description || '',
+          images: [...Array(5)].map((_, index) => item.images?.[index] || '')
+        });
+      }
+    } catch (error) {
+      console.error('Detail load error:', error);
+      setBackendMessage('Unable to load product details.');
+    }
+  };
+
   const addToCart = (product) => {
     const existingItem = cart.find(item => item.id === product.id);
     if (existingItem) {
@@ -558,11 +592,16 @@ function App() {
               const mainImage = p.image_url || 'https://cdn-icons-png.flaticon.com/512/878/878052.png';
               return (
                 <div key={p.id} className="product-card">
-                  <img src={mainImage} alt={p.name} onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/878/878052.png'; }} />
-                  <h4>{p.name}</h4>
-                  <div className="price-row">
+                  <div onClick={() => openProductDetail(p)} style={{ cursor: 'pointer' }}>
+                    <img src={mainImage} alt={p.name} onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/878/878052.png'; }} />
+                    <h4>{p.name}</h4>
+                  </div>
+                  <div className="price-row" style={{ alignItems: 'center' }}>
                     <span className="price">₹{p.price}</span>
-                    <button className="add-btn" onClick={() => addToCart(p)}>ADD</button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button className="add-btn" onClick={() => addToCart(p)}>ADD</button>
+                      <button className="detail-btn" onClick={() => openProductDetail(p)}>View</button>
+                    </div>
                   </div>
                 </div>
               );
@@ -735,6 +774,220 @@ function App() {
       </div>
     );
   };
+
+  const saveProductEdits = async () => {
+    if (!selectedProduct?.raw?._id) return;
+    if (!isAdminAuthenticated) {
+      setAuthError('Admin login required to save product updates.');
+      return;
+    }
+
+    try {
+      const payload = {
+        description: productEditData.description,
+        images: productEditData.images.filter(Boolean)
+      };
+      const response = await axios.put(`${API_BASE}/api/inventory/${selectedProduct.raw._id}`, payload, {
+        headers: {
+          Authorization: `Bearer ${adminToken}`
+        }
+      });
+      setSelectedProduct((prev) => ({
+        ...prev,
+        description: response.data.description,
+        images: response.data.images || prev.images
+      }));
+      setBackendMessage('Product updated successfully.');
+      fetchAdminData();
+    } catch (error) {
+      console.error('Product update error:', error);
+      setAuthError('Unable to save product details.');
+    }
+  };
+
+  const renderProductDetail = () => (
+    <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+      <button onClick={() => setSelectedProduct(null)} style={{ background: '#f3f4f6', border: 'none', borderRadius: '14px', padding: '12px 16px', cursor: 'pointer', marginBottom: '20px', fontWeight: '700' }}>
+        ← Back to catalog
+      </button>
+
+      <div style={{ background: '#fff', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 15px rgba(0,0,0,0.05)' }}>
+        <div style={{ display: 'flex', gap: '18px', flexDirection: 'column' }}>
+          <div style={{ borderRadius: '20px', overflow: 'hidden', position: 'relative' }}>
+            <img src={selectedProduct.images[0] || 'https://cdn-icons-png.flaticon.com/512/878/878052.png'} alt={selectedProduct.name} style={{ width: '100%', height: '240px', objectFit: 'cover' }} />
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
+            {selectedProduct.images.map((src, index) => (
+              <img
+                key={index}
+                src={src || 'https://cdn-icons-png.flaticon.com/512/878/878052.png'}
+                alt={`Thumbnail ${index + 1}`}
+                style={{ width: '70px', height: '70px', borderRadius: '16px', objectFit: 'cover', flexShrink: 0, border: src ? '2px solid #ff005c' : '1px solid #e5e7eb' }}
+              />
+            ))}
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '800' }}>{selectedProduct.name}</h2>
+                <p style={{ margin: '8px 0 0', color: '#6b7280' }}>SKU: {selectedProduct.sku || 'N/A'} • Category: {selectedProduct.category}</p>
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: '800', color: '#111' }}>₹{selectedProduct.price}</div>
+            </div>
+            <p style={{ color: '#4b5563', lineHeight: '1.8' }}>{selectedProduct.description}</p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '18px' }}>
+            <button onClick={() => addToCart(selectedProduct)} style={{ width: '100%', background: '#ff005c', color: '#fff', padding: '14px', borderRadius: '16px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+              Add to cart
+            </button>
+            <button onClick={handlePayWithPhonePe} style={{ width: '100%', background: '#0e6efc', color: '#fff', padding: '14px', borderRadius: '16px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+              Buy with PhonePe
+            </button>
+          </div>
+
+          {isAdminAuthenticated && (
+            <div style={{ marginTop: '24px', background: '#f8fafc', borderRadius: '20px', padding: '18px', border: '1px solid #e2e8f0' }}>
+              <div style={{ marginBottom: '14px', fontWeight: '800', fontSize: '16px' }}>Admin Edit</div>
+              <textarea
+                value={productEditData.description}
+                onChange={(e) => setProductEditData((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Edit product description"
+                style={{ width: '100%', minHeight: '120px', padding: '14px', borderRadius: '16px', border: '1px solid #d1d5db', marginBottom: '14px', resize: 'vertical' }}
+              />
+              <div style={{ display: 'grid', gap: '12px', marginBottom: '14px' }}>
+                {productEditData.images.map((value, index) => (
+                  <input
+                    key={index}
+                    value={value}
+                    onChange={(e) => setProductEditData((prev) => {
+                      const images = [...prev.images];
+                      images[index] = e.target.value;
+                      return { ...prev, images };
+                    })}
+                    placeholder={`Photo URL ${index + 1}`}
+                    style={{ width: '100%', padding: '14px', borderRadius: '16px', border: '1px solid #d1d5db' }}
+                  />
+                ))}
+              </div>
+              <button onClick={saveProductEdits} style={{ width: '100%', background: '#111827', color: '#fff', padding: '14px', borderRadius: '16px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+                Save product details
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const saveProductEdits = async () => {
+    if (!selectedProduct?.raw?._id) return;
+    if (!isAdminAuthenticated) {
+      setAuthError('Admin login required to save product updates.');
+      return;
+    }
+
+    try {
+      const payload = {
+        description: productEditData.description,
+        images: productEditData.images.filter(Boolean)
+      };
+      const response = await axios.put(`${API_BASE}/api/inventory/${selectedProduct.raw._id}`, payload, {
+        headers: {
+          Authorization: `Bearer ${adminToken}`
+        }
+      });
+      setSelectedProduct((prev) => ({
+        ...prev,
+        description: response.data.description,
+        images: response.data.images || prev.images
+      }));
+      setBackendMessage('Product updated successfully.');
+      fetchAdminData();
+    } catch (error) {
+      console.error('Product update error:', error);
+      setAuthError('Unable to save product details.');
+    }
+  };
+
+  const renderProductDetail = () => (
+    <div style={{ padding: '20px', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+      <button onClick={() => setSelectedProduct(null)} style={{ background: '#f3f4f6', border: 'none', borderRadius: '14px', padding: '12px 16px', cursor: 'pointer', marginBottom: '20px', fontWeight: '700' }}>
+        ← Back to catalog
+      </button>
+
+      <div style={{ background: '#fff', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 15px rgba(0,0,0,0.05)' }}>
+        <div style={{ display: 'flex', gap: '18px', flexDirection: 'column' }}>
+          <div style={{ borderRadius: '20px', overflow: 'hidden', position: 'relative' }}>
+            <img src={selectedProduct.images[0] || 'https://cdn-icons-png.flaticon.com/512/878/878052.png'} alt={selectedProduct.name} style={{ width: '100%', height: '240px', objectFit: 'cover' }} />
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
+            {selectedProduct.images.map((src, index) => (
+              <img
+                key={index}
+                src={src || 'https://cdn-icons-png.flaticon.com/512/878/878052.png'}
+                alt={`Thumbnail ${index + 1}`}
+                style={{ width: '70px', height: '70px', borderRadius: '16px', objectFit: 'cover', flexShrink: 0, border: src ? '2px solid #ff005c' : '1px solid #e5e7eb' }}
+              />
+            ))}
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '800' }}>{selectedProduct.name}</h2>
+                <p style={{ margin: '8px 0 0', color: '#6b7280' }}>SKU: {selectedProduct.sku || 'N/A'} • Category: {selectedProduct.category}</p>
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: '800', color: '#111' }}>₹{selectedProduct.price}</div>
+            </div>
+            <p style={{ color: '#4b5563', lineHeight: '1.8' }}>{selectedProduct.description}</p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '18px' }}>
+            <button onClick={() => addToCart(selectedProduct)} style={{ width: '100%', background: '#ff005c', color: '#fff', padding: '14px', borderRadius: '16px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+              Add to cart
+            </button>
+            <button onClick={handlePayWithPhonePe} style={{ width: '100%', background: '#0e6efc', color: '#fff', padding: '14px', borderRadius: '16px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+              Buy with PhonePe
+            </button>
+          </div>
+
+          {isAdminAuthenticated && (
+            <div style={{ marginTop: '24px', background: '#f8fafc', borderRadius: '20px', padding: '18px', border: '1px solid #e2e8f0' }}>
+              <div style={{ marginBottom: '14px', fontWeight: '800', fontSize: '16px' }}>Admin Edit</div>
+              <textarea
+                value={productEditData.description}
+                onChange={(e) => setProductEditData((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Edit product description"
+                style={{ width: '100%', minHeight: '120px', padding: '14px', borderRadius: '16px', border: '1px solid #d1d5db', marginBottom: '14px', resize: 'vertical' }}
+              />
+              <div style={{ display: 'grid', gap: '12px', marginBottom: '14px' }}>
+                {productEditData.images.map((value, index) => (
+                  <input
+                    key={index}
+                    value={value}
+                    onChange={(e) => setProductEditData((prev) => {
+                      const images = [...prev.images];
+                      images[index] = e.target.value;
+                      return { ...prev, images };
+                    })}
+                    placeholder={`Photo URL ${index + 1}`}
+                    style={{ width: '100%', padding: '14px', borderRadius: '16px', border: '1px solid #d1d5db' }}
+                  />
+                ))}
+              </div>
+              <button onClick={saveProductEdits} style={{ width: '100%', background: '#111827', color: '#fff', padding: '14px', borderRadius: '16px', border: 'none', cursor: 'pointer', fontWeight: '700' }}>
+                Save product details
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   const renderAccount = () => {
     const accountName = user?.name || partner?.name || 'Guest';
@@ -1058,21 +1311,25 @@ function App() {
   return (
     <div className="app-container">
       <div style={{ paddingBottom: '70px' }}>
-        {currentTab === 'Home' && renderHome()}
-        {currentTab === 'Cart' && renderCart()}
-        {currentTab === 'Orders' && renderOrders()}
-        {currentTab === 'Account' && renderAccount()}
-        {currentTab === 'Admin' && renderAdmin()}
+        {selectedProduct ? renderProductDetail() : (
+          <>
+            {currentTab === 'Home' && renderHome()}
+            {currentTab === 'Cart' && renderCart()}
+            {currentTab === 'Orders' && renderOrders()}
+            {currentTab === 'Account' && renderAccount()}
+            {currentTab === 'Admin' && renderAdmin()}
+          </>
+        )}
       </div>
 
       <div className="bottom-nav">
-        <div className={`nav-item ${currentTab === 'Home' ? 'active' : ''}`} onClick={() => setCurrentTab('Home')}>
+        <div className={`nav-item ${currentTab === 'Home' ? 'active' : ''}`} onClick={() => { setSelectedProduct(null); setCurrentTab('Home'); }}>
           <i className="fas fa-home"></i>Home
         </div>
-        <div className={`nav-item ${currentTab === 'Orders' ? 'active' : ''}`} onClick={() => setCurrentTab('Orders')}>
+        <div className={`nav-item ${currentTab === 'Orders' ? 'active' : ''}`} onClick={() => { setSelectedProduct(null); setCurrentTab('Orders'); }}>
           <i className="fas fa-receipt"></i>Orders
         </div>
-        <div className={`nav-item ${currentTab === 'Cart' ? 'active' : ''}`} onClick={() => setCurrentTab('Cart')} style={{ position: 'relative' }}>
+        <div className={`nav-item ${currentTab === 'Cart' ? 'active' : ''}`} onClick={() => { setSelectedProduct(null); setCurrentTab('Cart'); }} style={{ position: 'relative' }}>
           <i className="fas fa-shopping-cart"></i>Cart
           {cartTotalItems > 0 && (
             <span style={{ position: 'absolute', top: '-8px', right: '15px', background: '#ff005c', color: 'white', borderRadius: '50%', padding: '2px 6px', fontSize: '10px', fontWeight: 'bold', border: '2px solid white' }}>
@@ -1080,14 +1337,19 @@ function App() {
             </span>
           )}
         </div>
-        <div className={`nav-item ${currentTab === 'Account' ? 'active' : ''}`} onClick={() => setCurrentTab('Account')}>
+        <div className={`nav-item ${currentTab === 'Account' ? 'active' : ''}`} onClick={() => { setSelectedProduct(null); setCurrentTab('Account'); }}>
           <i className="fas fa-user"></i>Account
         </div>
-        {isAdminAuthenticated && (
-          <div className={`nav-item ${currentTab === 'Admin' ? 'active' : ''}`} onClick={() => setCurrentTab('Admin')}>
-            <i className="fas fa-shield-alt"></i>Admin
-          </div>
-        )}
+        <div className={`nav-item ${currentTab === 'Admin' ? 'active' : ''}`} onClick={() => {
+          setSelectedProduct(null);
+          if (isAdminAuthenticated) {
+            setCurrentTab('Admin');
+          } else {
+            setShowAdminLoginModal(true);
+          }
+        }}>
+          <i className="fas fa-shield-alt"></i>Admin
+        </div>
       </div>
 
       {showAdminLoginModal && (
